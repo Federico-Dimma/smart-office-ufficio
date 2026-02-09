@@ -513,11 +513,7 @@ function App() {
         </div>
       )}
 
-      {/* Footer */}
-      <footer className="footer">
-        <p>Smart Office Control System - Powered by AWS</p>
-        <p className="footer-ip">API: AWS Lambda + API Gateway | Scheduler: EventBridge</p>
-      </footer>
+
     </div>
   )
 }

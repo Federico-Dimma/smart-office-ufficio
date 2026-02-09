@@ -102,13 +102,15 @@ def lambda_handler(event, context):
             command_success = False
             try:
                 url = f"{OFFICE_API_BASE}/cgi-bin/imposta?velocita={speed}&seriale=ttyS1&indirizzo={address}&posizione=1&attuatore=V&fascia=inverno"
+                print(f"[SCHEDULER] URL: {url}")
                 req = urllib.request.Request(url, method='GET')
                 req.add_header('User-Agent', 'SmartOffice-Scheduler/1.0')
                 
                 try:
                     with urllib.request.urlopen(req, timeout=10) as resp:
                         status = resp.status
-                        print(f"[SCHEDULER] Risposta {thermo_name}: HTTP {status}")
+                        body = resp.read()
+                        print(f"[SCHEDULER] Risposta {thermo_name}: HTTP {status}, body: {body[:200] if body else 'empty'}")
                         command_success = True
                         executed.append({
                             'thermo': thermo_name,
