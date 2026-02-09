@@ -88,15 +88,18 @@ def lambda_handler(event, context):
         if sched_hour == current_hour and sched_minute == current_minute:
             # Estrai info
             thermo_id = item['pk'].replace('THERMO#', '')
+            schedule_id = item['sk'].replace('SCHEDULE#', '')
             speed = int(item.get('speed', 0))
+            is_one_time = item.get('oneTime', False)
             thermo_name = THERMO_NAMES[int(thermo_id)] if int(thermo_id) < len(THERMO_NAMES) else f'Thermo {thermo_id}'
             
-            print(f"[SCHEDULER] Esecuzione: {thermo_name} -> Velocita {speed}")
+            print(f"[SCHEDULER] Esecuzione: {thermo_name} -> Velocita {speed} (oneTime: {is_one_time})")
             
             # Ottieni indirizzo hardware
             address = THERMO_ADDRESSES.get(int(thermo_id), 157)
             
             # Invia comando
+            command_success = False
             try:
                 url = f"{OFFICE_API_BASE}/cgi-bin/imposta?velocita={speed}&seriale=ttyS1&indirizzo={address}&posizione=1&attuatore=V&fascia=inverno"
                 req = urllib.request.Request(url, method='GET')
@@ -106,19 +109,23 @@ def lambda_handler(event, context):
                     with urllib.request.urlopen(req, timeout=10) as resp:
                         status = resp.status
                         print(f"[SCHEDULER] Risposta {thermo_name}: HTTP {status}")
+                        command_success = True
                         executed.append({
                             'thermo': thermo_name,
                             'speed': speed,
-                            'status': 'OK'
+                            'status': 'OK',
+                            'oneTime': is_one_time
                         })
                 except Exception as e:
                     # Il server risponde ma con header non standard, comando passa comunque
                     if 'header' in str(e).lower() or 'RemoteDisconnected' in str(e):
                         print(f"[SCHEDULER] Comando inviato {thermo_name} (header warning)")
+                        command_success = True
                         executed.append({
                             'thermo': thermo_name,
                             'speed': speed,
-                            'status': 'OK'
+                            'status': 'OK',
+                            'oneTime': is_one_time
                         })
                     else:
                         raise
@@ -136,6 +143,19 @@ def lambda_handler(event, context):
                     'speed': speed,
                     'status': f'ERROR: {str(e)}'
                 })
+            
+            # Se oneTime e comando eseguito con successo, elimina la schedule
+            if is_one_time and command_success:
+                try:
+                    table.delete_item(
+                        Key={
+                            'pk': f'THERMO#{thermo_id}',
+                            'sk': f'SCHEDULE#{schedule_id}'
+                        }
+                    )
+                    print(f"[SCHEDULER] Schedule oneTime eliminata: {thermo_name} - {schedule_id}")
+                except Exception as e:
+                    print(f"[SCHEDULER] Errore eliminazione oneTime: {str(e)}")
     
     result = {
         'timestamp': now.isoformat(),

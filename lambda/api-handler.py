@@ -105,7 +105,8 @@ def get_all_schedules():
             'hour': item.get('hour', 0),
             'minute': item.get('minute', 0),
             'speed': item.get('speed', 0),
-            'active': item.get('active', True)
+            'active': item.get('active', True),
+            'oneTime': item.get('oneTime', False)
         })
     
     # Assicura che tutti i termostati (0-7) siano presenti
@@ -127,7 +128,8 @@ def add_schedule(body):
         'hour': int(body.get('hour', 0)),
         'minute': int(body.get('minute', 0)),
         'speed': int(body.get('speed', 0)),
-        'active': True
+        'active': True,
+        'oneTime': bool(body.get('oneTime', False))
     }
     
     table.put_item(Item=item)

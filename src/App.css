@@ -444,6 +444,36 @@ select:focus {
   font-weight: 600;
 }
 
+.onetime-badge {
+  padding: 0.2rem 0.5rem;
+  border-radius: 0.5rem;
+  background: linear-gradient(135deg, #9c27b0, #673ab7);
+  color: white;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.schedule-onetime {
+  border-left: 3px solid #9c27b0;
+}
+
+.form-group-inline {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-sm);
+}
+
+.toggle-label {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
 .no-schedules {
   text-align: center;
   color: var(--text-muted);

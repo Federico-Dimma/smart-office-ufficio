@@ -32,7 +32,8 @@ function App() {
     days: [],
     hour: '',
     minute: '',
-    speed: 0
+    speed: 0,
+    oneTime: false
   })
 
   // Aggiorna orologio ogni secondo
@@ -135,14 +136,15 @@ function App() {
           days: daysArray,
           hour: parseInt(newSchedule.hour),
           minute: parseInt(newSchedule.minute),
-          speed: newSchedule.speed
+          speed: newSchedule.speed,
+          oneTime: newSchedule.oneTime
         })
       })
 
       if (response.ok) {
-        showNotification('Programmazione aggiunta', 'success')
+        showNotification(newSchedule.oneTime ? 'Programmazione una tantum aggiunta' : 'Programmazione aggiunta', 'success')
         await loadSchedules()
-        setNewSchedule({ days: [], hour: '', minute: '', speed: 0 })
+        setNewSchedule({ days: [], hour: '', minute: '', speed: 0, oneTime: false })
       } else {
         throw new Error('Errore risposta server')
       }
@@ -392,6 +394,18 @@ function App() {
                   </div>
                 </div>
 
+                <div className="form-group form-group-inline">
+                  <label className="toggle-switch">
+                    <input
+                      type="checkbox"
+                      checked={newSchedule.oneTime}
+                      onChange={e => setNewSchedule(prev => ({ ...prev, oneTime: e.target.checked }))}
+                    />
+                    <span className="toggle-slider"></span>
+                  </label>
+                  <span className="toggle-label">Una tantum (si elimina dopo l'esecuzione)</span>
+                </div>
+
                 <button className="btn btn-primary" onClick={addSchedule} disabled={loading}>
                   Aggiungi
                 </button>
@@ -402,7 +416,7 @@ function App() {
                 <h3>Programmazioni</h3>
                 {schedules[selectedThermo]?.length > 0 ? (
                   schedules[selectedThermo].map((sched) => (
-                    <div key={sched.id} className={`schedule-item ${sched.active === false ? 'schedule-inactive' : ''}`}>
+                    <div key={sched.id} className={`schedule-item ${sched.active === false ? 'schedule-inactive' : ''} ${sched.oneTime ? 'schedule-onetime' : ''}`}>
                       <div className="schedule-info">
                         <label className="toggle-switch">
                           <input
@@ -420,6 +434,7 @@ function App() {
                         >
                           {SPEED_LABELS[sched.speed]}
                         </span>
+                        {sched.oneTime && <span className="onetime-badge" title="Una tantum">1x</span>}
                       </div>
                       <button 
                         className="btn btn-danger btn-small"
@@ -457,7 +472,7 @@ function App() {
                   <div key={thermo.id} className="thermo-schedules-section">
                     <h3 className="thermo-section-title">{thermo.name}</h3>
                     {thermoSchedules.map((sched) => (
-                      <div key={sched.id} className={`schedule-item ${sched.active === false ? 'schedule-inactive' : ''}`}>
+                      <div key={sched.id} className={`schedule-item ${sched.active === false ? 'schedule-inactive' : ''} ${sched.oneTime ? 'schedule-onetime' : ''}`}>
                         <div className="schedule-info">
                           <label className="toggle-switch">
                             <input
@@ -475,6 +490,7 @@ function App() {
                           >
                             {SPEED_LABELS[sched.speed]}
                           </span>
+                          {sched.oneTime && <span className="onetime-badge" title="Una tantum">1x</span>}
                         </div>
                         <button 
                           className="btn btn-danger btn-small"
