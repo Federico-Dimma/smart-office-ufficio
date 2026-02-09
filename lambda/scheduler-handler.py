@@ -16,6 +16,18 @@ ITALY_OFFSET = timedelta(hours=1)  # CET
 # Nomi termostati per logging
 THERMO_NAMES = ['Martina', 'Federico', 'Michele', 'Franco', 'Corridoio', 'Commerciale', 'Ingresso', 'Federica']
 
+# Mappatura ID termostato -> indirizzo hardware
+THERMO_ADDRESSES = {
+    0: 151,  # Martina
+    1: 157,  # Federico
+    2: 153,  # Michele
+    3: 152,  # Franco
+    4: 158,  # Corridoio
+    5: 155,  # Commerciale
+    6: 154,  # Ingresso
+    7: 159,  # Federica
+}
+
 def is_dst():
     """Verifica se siamo in ora legale (approssimativa)"""
     now_utc = datetime.now(timezone.utc)
@@ -81,20 +93,35 @@ def lambda_handler(event, context):
             
             print(f"[SCHEDULER] Esecuzione: {thermo_name} -> Velocita {speed}")
             
+            # Ottieni indirizzo hardware
+            address = THERMO_ADDRESSES.get(int(thermo_id), 157)
+            
             # Invia comando
             try:
-                url = f"{OFFICE_API_BASE}/set?id={thermo_id}&speed={speed}"
+                url = f"{OFFICE_API_BASE}/cgi-bin/imposta?velocita={speed}&seriale=ttyS1&indirizzo={address}&posizione=1&attuatore=V&fascia=inverno"
                 req = urllib.request.Request(url, method='GET')
                 req.add_header('User-Agent', 'SmartOffice-Scheduler/1.0')
                 
-                with urllib.request.urlopen(req, timeout=10) as resp:
-                    status = resp.status
-                    print(f"[SCHEDULER] Risposta {thermo_name}: HTTP {status}")
-                    executed.append({
-                        'thermo': thermo_name,
-                        'speed': speed,
-                        'status': 'OK'
-                    })
+                try:
+                    with urllib.request.urlopen(req, timeout=10) as resp:
+                        status = resp.status
+                        print(f"[SCHEDULER] Risposta {thermo_name}: HTTP {status}")
+                        executed.append({
+                            'thermo': thermo_name,
+                            'speed': speed,
+                            'status': 'OK'
+                        })
+                except Exception as e:
+                    # Il server risponde ma con header non standard, comando passa comunque
+                    if 'header' in str(e).lower() or 'RemoteDisconnected' in str(e):
+                        print(f"[SCHEDULER] Comando inviato {thermo_name} (header warning)")
+                        executed.append({
+                            'thermo': thermo_name,
+                            'speed': speed,
+                            'status': 'OK'
+                        })
+                    else:
+                        raise
             except urllib.error.URLError as e:
                 print(f"[SCHEDULER] ERRORE {thermo_name}: {str(e)}")
                 executed.append({

@@ -11,6 +11,18 @@ table = dynamodb.Table('smart-office-schedules')
 
 OFFICE_API_BASE = 'http://5.89.101.247:8086'
 
+# Mappatura ID termostato -> indirizzo hardware
+THERMO_ADDRESSES = {
+    0: 151,  # Martina
+    1: 157,  # Federico
+    2: 153,  # Michele
+    3: 152,  # Franco
+    4: 158,  # Corridoio
+    5: 155,  # Commerciale
+    6: 154,  # Ingresso
+    7: 159,  # Federica
+}
+
 # Helper per convertire Decimal in int/float per JSON
 class DecimalEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -157,20 +169,38 @@ def set_thermostat(thermo_id, speed):
     if thermo_id is None or speed is None:
         return json_response(400, {'error': 'Missing id or speed'})
     
+    thermo_id = int(thermo_id)
+    speed = int(speed)
+    
+    # Ottieni indirizzo hardware
+    if thermo_id not in THERMO_ADDRESSES:
+        return json_response(400, {'error': f'Invalid thermostat id: {thermo_id}'})
+    
+    address = THERMO_ADDRESSES[thermo_id]
+    
     try:
-        url = f'{OFFICE_API_BASE}/set?id={thermo_id}&speed={speed}'
+        url = f'{OFFICE_API_BASE}/cgi-bin/imposta?velocita={speed}&seriale=ttyS1&indirizzo={address}&posizione=1&attuatore=V&fascia=inverno'
         print(f"Calling office API: {url}")
         
         req = urllib.request.Request(url, method='GET')
         req.add_header('User-Agent', 'SmartOffice-Lambda/1.0')
         
         with urllib.request.urlopen(req, timeout=10) as response:
-            result = response.read().decode('utf-8')
-            print(f"Office API response: {result}")
-            return json_response(200, {'success': True, 'response': result})
+            status = response.status
+            print(f"Office API response: HTTP {status}")
+            return json_response(200, {'success': True, 'status': status})
+    except urllib.error.HTTPError as e:
+        # Anche 200 con header malformato può essere ok
+        print(f"Office API HTTPError: {e.code}")
+        if e.code == 200:
+            return json_response(200, {'success': True})
+        return json_response(502, {'error': f'Office server error: HTTP {e.code}'})
     except urllib.error.URLError as e:
         print(f"Office API error: {str(e)}")
         return json_response(502, {'error': f'Office server error: {str(e)}'})
     except Exception as e:
         print(f"Unexpected error: {str(e)}")
+        # Il server risponde ma con header non standard, il comando passa comunque
+        if 'header' in str(e).lower():
+            return json_response(200, {'success': True, 'note': 'Command sent'})
         return json_response(500, {'error': str(e)})
