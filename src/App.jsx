@@ -1,9 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import './App.css'
 
-// Configurazione
-const OFFICE_API_BASE = 'http://5.89.101.247:8086'  // Server ufficio per comandi termostati
-const AWS_API_BASE = 'https://77vpq0kkec.execute-api.eu-south-1.amazonaws.com/prod'  // AWS API per schedule
+// Configurazione - tutto passa da AWS API (proxy per evitare mixed content HTTPS/HTTP)
+const AWS_API_BASE = 'https://77vpq0kkec.execute-api.eu-south-1.amazonaws.com/prod'
 
 // Lista termostati
 const THERMOSTATS = [
@@ -69,15 +68,20 @@ function App() {
     }
   }
 
-  // Comando manuale termostato (inviato al server ufficio)
+  // Comando manuale termostato (passa da Lambda proxy)
   const setThermostat = async (id, speed) => {
     setLoading(true)
     try {
-      const response = await fetch(`${OFFICE_API_BASE}/set?id=${id}&speed=${speed}`)
+      const response = await fetch(`${AWS_API_BASE}/thermostat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, speed })
+      })
       if (response.ok) {
         showNotification(`${THERMOSTATS[id].name} impostato a ${SPEED_LABELS[speed]}`, 'success')
       } else {
-        throw new Error('Errore risposta server')
+        const err = await response.json()
+        throw new Error(err.error || 'Errore risposta server')
       }
     } catch (error) {
       console.error('Errore comando:', error)
@@ -461,7 +465,7 @@ function App() {
       {/* Footer */}
       <footer className="footer">
         <p>Smart Office Control System - Powered by AWS</p>
-        <p className="footer-ip">Server: {OFFICE_API_BASE} | Scheduler: AWS Lambda</p>
+        <p className="footer-ip">API: AWS Lambda + API Gateway | Scheduler: EventBridge</p>
       </footer>
     </div>
   )

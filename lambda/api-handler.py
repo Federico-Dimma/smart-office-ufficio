@@ -1,11 +1,15 @@
 import json
 import boto3
 import uuid
+import urllib.request
+import urllib.error
 from decimal import Decimal
 from boto3.dynamodb.conditions import Key
 
 dynamodb = boto3.resource('dynamodb', region_name='eu-south-1')
 table = dynamodb.Table('smart-office-schedules')
+
+OFFICE_API_BASE = 'http://5.89.101.247:8086'
 
 # Helper per convertire Decimal in int/float per JSON
 class DecimalEncoder(json.JSONEncoder):
@@ -48,6 +52,9 @@ def lambda_handler(event, context):
         elif path == '/schedules/toggle' and http_method == 'POST':
             body = json.loads(event.get('body', '{}'))
             return toggle_schedule(body.get('thermoId'), body.get('scheduleId'), body.get('active'))
+        elif path == '/thermostat' and http_method == 'POST':
+            body = json.loads(event.get('body', '{}'))
+            return set_thermostat(body.get('id'), body.get('speed'))
         else:
             return json_response(404, {'error': 'Not found'})
     except Exception as e:
@@ -133,3 +140,26 @@ def toggle_schedule(thermo_id, schedule_id, active):
     )
     
     return json_response(200, {'success': True, 'active': bool(active)})
+
+def set_thermostat(thermo_id, speed):
+    """Invia comando al server ufficio (proxy per evitare mixed content)"""
+    if thermo_id is None or speed is None:
+        return json_response(400, {'error': 'Missing id or speed'})
+    
+    try:
+        url = f'{OFFICE_API_BASE}/set?id={thermo_id}&speed={speed}'
+        print(f"Calling office API: {url}")
+        
+        req = urllib.request.Request(url, method='GET')
+        req.add_header('User-Agent', 'SmartOffice-Lambda/1.0')
+        
+        with urllib.request.urlopen(req, timeout=10) as response:
+            result = response.read().decode('utf-8')
+            print(f"Office API response: {result}")
+            return json_response(200, {'success': True, 'response': result})
+    except urllib.error.URLError as e:
+        print(f"Office API error: {str(e)}")
+        return json_response(502, {'error': f'Office server error: {str(e)}'})
+    except Exception as e:
+        print(f"Unexpected error: {str(e)}")
+        return json_response(500, {'error': str(e)})
