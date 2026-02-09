@@ -1,19 +1,20 @@
 import { useState, useEffect, useCallback } from 'react'
 import './App.css'
 
-// Configurazione - IP esterno dell'ufficio
-const OFFICE_API_BASE = 'http://5.89.101.247:8086'
+// Configurazione
+const OFFICE_API_BASE = 'http://5.89.101.247:8086'  // Server ufficio per comandi termostati
+const AWS_API_BASE = 'https://77vpq0kkec.execute-api.eu-south-1.amazonaws.com/prod'  // AWS API per schedule
 
-// Lista termostati (uguale all'ESP32)
+// Lista termostati
 const THERMOSTATS = [
-  { id: 0, name: 'Martina', serial: 'ttyS1', address: 151, position: 1 },
-  { id: 1, name: 'Federico', serial: 'ttyS1', address: 157, position: 1 },
-  { id: 2, name: 'Michele', serial: 'ttyS1', address: 153, position: 1 },
-  { id: 3, name: 'Franco', serial: 'ttyS1', address: 152, position: 1 },
-  { id: 4, name: 'Corridoio', serial: 'ttyS1', address: 158, position: 1 },
-  { id: 5, name: 'Commerciale', serial: 'ttyS1', address: 155, position: 1 },
-  { id: 6, name: 'Ingresso', serial: 'ttyS1', address: 154, position: 1 },
-  { id: 7, name: 'Federica', serial: 'ttyS1', address: 159, position: 1 },
+  { id: 0, name: 'Martina' },
+  { id: 1, name: 'Federico' },
+  { id: 2, name: 'Michele' },
+  { id: 3, name: 'Franco' },
+  { id: 4, name: 'Corridoio' },
+  { id: 5, name: 'Commerciale' },
+  { id: 6, name: 'Ingresso' },
+  { id: 7, name: 'Federica' },
 ]
 
 const DAYS_NAMES = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab']
@@ -34,15 +35,15 @@ function App() {
     speed: 0
   })
 
-  // Aggiorna l'orologio ogni secondo
+  // Aggiorna orologio ogni secondo
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000)
     return () => clearInterval(timer)
   }, [])
 
-  // Carica le schedule all'avvio
+  // Carica schedule da AWS all'avvio
   useEffect(() => {
-    loadAllSchedules()
+    loadSchedules()
   }, [])
 
   // Mostra notifica
@@ -51,30 +52,24 @@ function App() {
     setTimeout(() => setNotification(null), 3000)
   }, [])
 
-  // Carica tutte le schedule dal server
-  const loadAllSchedules = async () => {
+  // Carica schedule da AWS
+  const loadSchedules = async () => {
     try {
-      const response = await fetch(`${OFFICE_API_BASE}/getAllSchedules`)
+      const response = await fetch(`${AWS_API_BASE}/schedules`)
       if (response.ok) {
         const data = await response.json()
-        const schedulesMap = {}
-        data.thermostats.forEach((thermo, index) => {
-          schedulesMap[index] = thermo.schedules || []
-        })
-        setSchedules(schedulesMap)
+        setSchedules(data.schedules || {})
       }
     } catch (error) {
       console.error('Errore caricamento schedule:', error)
-      // Se non riesce a caricare, usa schedule vuote
-      const emptySchedules = {}
-      THERMOSTATS.forEach((_, index) => {
-        emptySchedules[index] = []
-      })
-      setSchedules(emptySchedules)
+      // Inizializza vuoto
+      const empty = {}
+      THERMOSTATS.forEach((_, idx) => { empty[idx] = [] })
+      setSchedules(empty)
     }
   }
 
-  // Imposta velocità termostato
+  // Comando manuale termostato (inviato al server ufficio)
   const setThermostat = async (id, speed) => {
     setLoading(true)
     try {
@@ -85,13 +80,13 @@ function App() {
         throw new Error('Errore risposta server')
       }
     } catch (error) {
-      console.error('Errore impostazione termostato:', error)
+      console.error('Errore comando:', error)
       showNotification(`Errore: impossibile impostare ${THERMOSTATS[id].name}`, 'error')
     }
     setLoading(false)
   }
 
-  // Aggiungi nuova schedule
+  // Aggiungi nuova schedule (salva su AWS)
   const addSchedule = async () => {
     if (newSchedule.days.length === 0) {
       showNotification('Seleziona almeno un giorno', 'error')
@@ -102,55 +97,80 @@ function App() {
       return
     }
 
+    // Crea array giorni (7 elementi boolean)
+    const daysArray = [false, false, false, false, false, false, false]
+    newSchedule.days.forEach(d => { daysArray[d] = true })
+
     setLoading(true)
     try {
-      const response = await fetch(`${OFFICE_API_BASE}/addSchedule`, {
+      const response = await fetch(`${AWS_API_BASE}/schedules`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: `id=${selectedThermo}&days=${newSchedule.days.join(',')}&hour=${newSchedule.hour}&minute=${newSchedule.minute}&speed=${newSchedule.speed}`
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          thermoId: selectedThermo,
+          days: daysArray,
+          hour: parseInt(newSchedule.hour),
+          minute: parseInt(newSchedule.minute),
+          speed: newSchedule.speed
+        })
       })
-      
+
       if (response.ok) {
-        const data = await response.json()
-        if (data.success) {
-          showNotification('Programmazione aggiunta', 'success')
-          await loadAllSchedules()
-          setNewSchedule({ days: [], hour: '', minute: '', speed: 0 })
-        } else {
-          throw new Error(data.error || 'Errore sconosciuto')
-        }
+        showNotification('Programmazione aggiunta', 'success')
+        await loadSchedules()
+        setNewSchedule({ days: [], hour: '', minute: '', speed: 0 })
       } else {
         throw new Error('Errore risposta server')
       }
     } catch (error) {
       console.error('Errore aggiunta schedule:', error)
-      showNotification('Errore nell\'aggiunta della programmazione', 'error')
+      showNotification('Errore nell\'aggiunta', 'error')
     }
     setLoading(false)
   }
 
-  // Elimina schedule
-  const deleteSchedule = async (thermoId, scheduleIndex) => {
+  // Elimina schedule (da AWS)
+  const deleteSchedule = async (thermoId, scheduleId) => {
     if (!confirm('Eliminare questa programmazione?')) return
 
     setLoading(true)
     try {
-      const response = await fetch(`${OFFICE_API_BASE}/deleteSchedule`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: `thermoId=${thermoId}&scheduleIndex=${scheduleIndex}`
+      const response = await fetch(`${AWS_API_BASE}/schedules?thermoId=${thermoId}&scheduleId=${scheduleId}`, {
+        method: 'DELETE'
       })
 
       if (response.ok) {
-        const data = await response.json()
-        if (data.success) {
-          showNotification('Programmazione eliminata', 'success')
-          await loadAllSchedules()
-        }
+        showNotification('Programmazione eliminata', 'success')
+        await loadSchedules()
       }
     } catch (error) {
-      console.error('Errore eliminazione schedule:', error)
+      console.error('Errore eliminazione:', error)
       showNotification('Errore nell\'eliminazione', 'error')
+    }
+    setLoading(false)
+  }
+
+  // Toggle attiva/disattiva schedule (su AWS)
+  const toggleScheduleActive = async (thermoId, scheduleId, currentActive) => {
+    setLoading(true)
+    try {
+      const response = await fetch(`${AWS_API_BASE}/schedules/toggle`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          thermoId: thermoId,
+          scheduleId: scheduleId,
+          active: !currentActive
+        })
+      })
+
+      if (response.ok) {
+        showNotification(currentActive ? 'Programmazione disattivata' : 'Programmazione attivata', 'success')
+        await loadSchedules()
+      }
+    } catch (error) {
+      console.error('Errore toggle:', error)
+      showNotification('Errore nel cambio stato', 'error')
     }
     setLoading(false)
   }
@@ -172,34 +192,11 @@ function App() {
 
   // Formatta giorni attivi
   const formatDays = (days) => {
+    if (!Array.isArray(days)) return ''
     return days
       .map((active, idx) => active ? DAYS_NAMES[idx] : null)
       .filter(Boolean)
       .join(', ')
-  }
-
-  // Toggle attivazione schedule
-  const toggleScheduleActive = async (thermoId, scheduleIndex, currentActive) => {
-    setLoading(true)
-    try {
-      const response = await fetch(`${OFFICE_API_BASE}/toggleSchedule`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: `thermoId=${thermoId}&scheduleIndex=${scheduleIndex}&active=${!currentActive}`
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        if (data.success) {
-          showNotification(currentActive ? 'Programmazione disattivata' : 'Programmazione attivata', 'success')
-          await loadAllSchedules()
-        }
-      }
-    } catch (error) {
-      console.error('Errore toggle schedule:', error)
-      showNotification('Errore nel cambio stato', 'error')
-    }
-    setLoading(false)
   }
 
   return (
@@ -274,7 +271,7 @@ function App() {
               {schedules[thermo.id]?.length > 0 && (
                 <div className="schedule-preview">
                   {schedules[thermo.id].slice(0, 2).map((sched, idx) => (
-                    <div key={idx} className="schedule-mini">
+                    <div key={idx} className={`schedule-mini ${sched.active === false ? 'inactive' : ''}`}>
                       <span className="schedule-time">{formatTime(sched.hour, sched.minute)}</span>
                       <span className="schedule-speed" style={{ color: SPEED_COLORS[sched.speed] }}>
                         {SPEED_LABELS[sched.speed]}
@@ -297,7 +294,7 @@ function App() {
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Programmazione {THERMOSTATS[selectedThermo].name}</h2>
-              <button className="close-btn" onClick={() => setSelectedThermo(null)}>×</button>
+              <button className="close-btn" onClick={() => setSelectedThermo(null)}>X</button>
             </div>
 
             <div className="modal-body">
@@ -344,7 +341,7 @@ function App() {
                     />
                   </div>
                   <div className="form-group">
-                    <label>Velocità:</label>
+                    <label>Velocita:</label>
                     <select
                       value={newSchedule.speed}
                       onChange={e => setNewSchedule(prev => ({ ...prev, speed: parseInt(e.target.value) }))}
@@ -365,14 +362,14 @@ function App() {
               <div className="schedule-list">
                 <h3>Programmazioni</h3>
                 {schedules[selectedThermo]?.length > 0 ? (
-                  schedules[selectedThermo].map((sched, idx) => (
-                    <div key={idx} className={`schedule-item ${sched.active === false ? 'schedule-inactive' : ''}`}>
+                  schedules[selectedThermo].map((sched) => (
+                    <div key={sched.id} className={`schedule-item ${sched.active === false ? 'schedule-inactive' : ''}`}>
                       <div className="schedule-info">
                         <label className="toggle-switch">
                           <input
                             type="checkbox"
                             checked={sched.active !== false}
-                            onChange={() => toggleScheduleActive(selectedThermo, idx, sched.active !== false)}
+                            onChange={() => toggleScheduleActive(selectedThermo, sched.id, sched.active !== false)}
                           />
                           <span className="toggle-slider"></span>
                         </label>
@@ -387,7 +384,7 @@ function App() {
                       </div>
                       <button 
                         className="btn btn-danger btn-small"
-                        onClick={() => deleteSchedule(selectedThermo, idx)}
+                        onClick={() => deleteSchedule(selectedThermo, sched.id)}
                         title="Elimina"
                       >
                         X
@@ -409,7 +406,7 @@ function App() {
           <div className="modal modal-large" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Tutte le Programmazioni</h2>
-              <button className="close-btn" onClick={() => setShowAllSchedules(false)}>×</button>
+              <button className="close-btn" onClick={() => setShowAllSchedules(false)}>X</button>
             </div>
 
             <div className="modal-body">
@@ -420,14 +417,14 @@ function App() {
                 return (
                   <div key={thermo.id} className="thermo-schedules-section">
                     <h3 className="thermo-section-title">{thermo.name}</h3>
-                    {thermoSchedules.map((sched, idx) => (
-                      <div key={idx} className={`schedule-item ${sched.active === false ? 'schedule-inactive' : ''}`}>
+                    {thermoSchedules.map((sched) => (
+                      <div key={sched.id} className={`schedule-item ${sched.active === false ? 'schedule-inactive' : ''}`}>
                         <div className="schedule-info">
                           <label className="toggle-switch">
                             <input
                               type="checkbox"
                               checked={sched.active !== false}
-                              onChange={() => toggleScheduleActive(thermo.id, idx, sched.active !== false)}
+                              onChange={() => toggleScheduleActive(thermo.id, sched.id, sched.active !== false)}
                             />
                             <span className="toggle-slider"></span>
                           </label>
@@ -442,7 +439,7 @@ function App() {
                         </div>
                         <button 
                           className="btn btn-danger btn-small"
-                          onClick={() => deleteSchedule(thermo.id, idx)}
+                          onClick={() => deleteSchedule(thermo.id, sched.id)}
                           title="Elimina"
                         >
                           X
@@ -463,8 +460,8 @@ function App() {
 
       {/* Footer */}
       <footer className="footer">
-        <p>Smart Office Control System - Powered by AWS Amplify</p>
-        <p className="footer-ip">Connesso a: {OFFICE_API_BASE}</p>
+        <p>Smart Office Control System - Powered by AWS</p>
+        <p className="footer-ip">Server: {OFFICE_API_BASE} | Scheduler: AWS Lambda</p>
       </footer>
     </div>
   )
