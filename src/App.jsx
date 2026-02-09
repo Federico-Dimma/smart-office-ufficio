@@ -178,12 +178,36 @@ function App() {
       .join(', ')
   }
 
+  // Toggle attivazione schedule
+  const toggleScheduleActive = async (thermoId, scheduleIndex, currentActive) => {
+    setLoading(true)
+    try {
+      const response = await fetch(`${OFFICE_API_BASE}/toggleSchedule`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `thermoId=${thermoId}&scheduleIndex=${scheduleIndex}&active=${!currentActive}`
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        if (data.success) {
+          showNotification(currentActive ? 'Programmazione disattivata' : 'Programmazione attivata', 'success')
+          await loadAllSchedules()
+        }
+      }
+    } catch (error) {
+      console.error('Errore toggle schedule:', error)
+      showNotification('Errore nel cambio stato', 'error')
+    }
+    setLoading(false)
+  }
+
   return (
     <div className="app">
       {/* Header */}
       <header className="header">
         <div className="header-content">
-          <h1>🏢 Controllo Termostati Ufficio</h1>
+          <h1>Controllo Termostati Ufficio</h1>
           <div className="clock">
             {currentTime.toLocaleDateString('it-IT', {
               weekday: 'long',
@@ -199,7 +223,7 @@ function App() {
             className="btn btn-secondary"
             onClick={() => setShowAllSchedules(true)}
           >
-            📅 Tutte le Programmazioni
+            Tutte le Programmazioni
           </button>
         </div>
       </header>
@@ -243,7 +267,7 @@ function App() {
                 className="btn btn-schedule"
                 onClick={() => setSelectedThermo(thermo.id)}
               >
-                ⏰ Programmazione
+                Programmazione
               </button>
 
               {/* Mini lista schedule */}
@@ -333,17 +357,25 @@ function App() {
                 </div>
 
                 <button className="btn btn-primary" onClick={addSchedule} disabled={loading}>
-                  ➕ Aggiungi
+                  Aggiungi
                 </button>
               </div>
 
               {/* Lista schedule esistenti */}
               <div className="schedule-list">
-                <h3>Programmazioni Attive</h3>
+                <h3>Programmazioni</h3>
                 {schedules[selectedThermo]?.length > 0 ? (
                   schedules[selectedThermo].map((sched, idx) => (
-                    <div key={idx} className="schedule-item">
+                    <div key={idx} className={`schedule-item ${sched.active === false ? 'schedule-inactive' : ''}`}>
                       <div className="schedule-info">
+                        <label className="toggle-switch">
+                          <input
+                            type="checkbox"
+                            checked={sched.active !== false}
+                            onChange={() => toggleScheduleActive(selectedThermo, idx, sched.active !== false)}
+                          />
+                          <span className="toggle-slider"></span>
+                        </label>
                         <span className="schedule-days">{formatDays(sched.days)}</span>
                         <span className="schedule-time">{formatTime(sched.hour, sched.minute)}</span>
                         <span 
@@ -356,8 +388,9 @@ function App() {
                       <button 
                         className="btn btn-danger btn-small"
                         onClick={() => deleteSchedule(selectedThermo, idx)}
+                        title="Elimina"
                       >
-                        🗑️
+                        X
                       </button>
                     </div>
                   ))
@@ -375,7 +408,7 @@ function App() {
         <div className="modal-overlay" onClick={() => setShowAllSchedules(false)}>
           <div className="modal modal-large" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>📅 Tutte le Programmazioni</h2>
+              <h2>Tutte le Programmazioni</h2>
               <button className="close-btn" onClick={() => setShowAllSchedules(false)}>×</button>
             </div>
 
@@ -388,8 +421,16 @@ function App() {
                   <div key={thermo.id} className="thermo-schedules-section">
                     <h3 className="thermo-section-title">{thermo.name}</h3>
                     {thermoSchedules.map((sched, idx) => (
-                      <div key={idx} className="schedule-item">
+                      <div key={idx} className={`schedule-item ${sched.active === false ? 'schedule-inactive' : ''}`}>
                         <div className="schedule-info">
+                          <label className="toggle-switch">
+                            <input
+                              type="checkbox"
+                              checked={sched.active !== false}
+                              onChange={() => toggleScheduleActive(thermo.id, idx, sched.active !== false)}
+                            />
+                            <span className="toggle-slider"></span>
+                          </label>
                           <span className="schedule-days">{formatDays(sched.days)}</span>
                           <span className="schedule-time">{formatTime(sched.hour, sched.minute)}</span>
                           <span 
@@ -402,8 +443,9 @@ function App() {
                         <button 
                           className="btn btn-danger btn-small"
                           onClick={() => deleteSchedule(thermo.id, idx)}
+                          title="Elimina"
                         >
-                          🗑️
+                          X
                         </button>
                       </div>
                     ))}
