@@ -34,7 +34,18 @@ def lambda_handler(event, context):
     print(f"Event: {json.dumps(event)}")
     
     http_method = event.get('httpMethod', event.get('requestContext', {}).get('http', {}).get('method', 'GET'))
-    path = event.get('path', event.get('rawPath', '/'))
+    
+    # HTTP API 2.0 usa rawPath che include lo stage (/prod/xxx), lo rimuoviamo
+    raw_path = event.get('rawPath', event.get('path', '/'))
+    # Rimuovi prefisso stage se presente
+    if raw_path.startswith('/prod/'):
+        path = raw_path[5:]  # Rimuove '/prod'
+    elif raw_path.startswith('/prod'):
+        path = raw_path[5:] or '/'
+    else:
+        path = raw_path
+    
+    print(f"Method: {http_method}, Path: {path}")
     
     # Handle CORS preflight
     if http_method == 'OPTIONS':

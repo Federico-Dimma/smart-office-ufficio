@@ -1,0 +1,1 @@
+{"statusCode": 502, "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "Content-Type", "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS"}, "body": "{\"error\": \"Office server error: HTTP Error 404: Site or Page Not Found\"}"}

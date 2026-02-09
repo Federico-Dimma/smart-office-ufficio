@@ -1,0 +1,5 @@
+{
+    "path":  "/thermostat",
+    "body":  "{\"id\":0,\"speed\":0}",
+    "httpMethod":  "POST"
+}
