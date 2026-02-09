@@ -23,6 +23,7 @@ const SPEED_COLORS = { 0: '#dc3545', 1: '#28a745', 2: '#ffc107', 3: '#17a2b8' }
 function App() {
   const [currentTime, setCurrentTime] = useState(new Date())
   const [schedules, setSchedules] = useState({})
+  const [thermoStatus, setThermoStatus] = useState({})
   const [selectedThermo, setSelectedThermo] = useState(null)
   const [showAllSchedules, setShowAllSchedules] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -40,9 +41,13 @@ function App() {
     return () => clearInterval(timer)
   }, [])
 
-  // Carica schedule da AWS all'avvio
+  // Carica schedule e status da AWS all'avvio
   useEffect(() => {
     loadSchedules()
+    loadStatus()
+    // Ricarica status ogni 30 secondi
+    const statusTimer = setInterval(loadStatus, 30000)
+    return () => clearInterval(statusTimer)
   }, [])
 
   // Mostra notifica
@@ -68,6 +73,19 @@ function App() {
     }
   }
 
+  // Carica stato termostati da AWS
+  const loadStatus = async () => {
+    try {
+      const response = await fetch(`${AWS_API_BASE}/status`)
+      if (response.ok) {
+        const data = await response.json()
+        setThermoStatus(data.status || {})
+      }
+    } catch (error) {
+      console.error('Errore caricamento status:', error)
+    }
+  }
+
   // Comando manuale termostato (passa da Lambda proxy)
   const setThermostat = async (id, speed) => {
     setLoading(true)
@@ -79,6 +97,8 @@ function App() {
       })
       if (response.ok) {
         showNotification(`${THERMOSTATS[id].name} impostato a ${SPEED_LABELS[speed]}`, 'success')
+        // Ricarica stato dopo 1 secondo (tempo per il server di aggiornare)
+        setTimeout(loadStatus, 1000)
       } else {
         const err = await response.json()
         throw new Error(err.error || 'Errore risposta server')
@@ -246,49 +266,64 @@ function App() {
       {/* Grid termostati */}
       <main className="main">
         <div className="thermostat-grid">
-          {THERMOSTATS.map(thermo => (
-            <div key={thermo.id} className="thermostat-card">
-              <h2 className="thermostat-name">{thermo.name}</h2>
-              
-              <div className="speed-buttons">
-                {[0, 1, 2, 3].map(speed => (
-                  <button
-                    key={speed}
-                    className="speed-btn"
-                    style={{ backgroundColor: SPEED_COLORS[speed] }}
-                    onClick={() => setThermostat(thermo.id, speed)}
-                    disabled={loading}
-                  >
-                    {SPEED_LABELS[speed]}
-                  </button>
-                ))}
-              </div>
-
-              <button 
-                className="btn btn-schedule"
-                onClick={() => setSelectedThermo(thermo.id)}
-              >
-                Programmazione
-              </button>
-
-              {/* Mini lista schedule */}
-              {schedules[thermo.id]?.length > 0 && (
-                <div className="schedule-preview">
-                  {schedules[thermo.id].slice(0, 2).map((sched, idx) => (
-                    <div key={idx} className={`schedule-mini ${sched.active === false ? 'inactive' : ''}`}>
-                      <span className="schedule-time">{formatTime(sched.hour, sched.minute)}</span>
-                      <span className="schedule-speed" style={{ color: SPEED_COLORS[sched.speed] }}>
-                        {SPEED_LABELS[sched.speed]}
-                      </span>
-                    </div>
-                  ))}
-                  {schedules[thermo.id].length > 2 && (
-                    <div className="schedule-more">+{schedules[thermo.id].length - 2} altre</div>
+          {THERMOSTATS.map(thermo => {
+            const status = thermoStatus[thermo.id]
+            const currentSpeed = status?.speed ?? -1
+            
+            return (
+              <div key={thermo.id} className="thermostat-card">
+                <div className="thermostat-header">
+                  <h2 className="thermostat-name">{thermo.name}</h2>
+                  {currentSpeed >= 0 && (
+                    <span 
+                      className="status-badge"
+                      style={{ backgroundColor: SPEED_COLORS[currentSpeed] }}
+                    >
+                      {SPEED_LABELS[currentSpeed]}
+                    </span>
                   )}
                 </div>
-              )}
-            </div>
-          ))}
+                
+                <div className="speed-buttons">
+                  {[0, 1, 2, 3].map(speed => (
+                    <button
+                      key={speed}
+                      className={`speed-btn ${currentSpeed === speed ? 'active' : ''}`}
+                      style={{ backgroundColor: SPEED_COLORS[speed] }}
+                      onClick={() => setThermostat(thermo.id, speed)}
+                      disabled={loading}
+                    >
+                      {SPEED_LABELS[speed]}
+                    </button>
+                  ))}
+                </div>
+
+                <button 
+                  className="btn btn-schedule"
+                  onClick={() => setSelectedThermo(thermo.id)}
+                >
+                  Programmazione
+                </button>
+
+                {/* Mini lista schedule */}
+                {schedules[thermo.id]?.length > 0 && (
+                  <div className="schedule-preview">
+                    {schedules[thermo.id].slice(0, 2).map((sched, idx) => (
+                      <div key={idx} className={`schedule-mini ${sched.active === false ? 'inactive' : ''}`}>
+                        <span className="schedule-time">{formatTime(sched.hour, sched.minute)}</span>
+                        <span className="schedule-speed" style={{ color: SPEED_COLORS[sched.speed] }}>
+                          {SPEED_LABELS[sched.speed]}
+                        </span>
+                      </div>
+                    ))}
+                    {schedules[thermo.id].length > 2 && (
+                      <div className="schedule-more">+{schedules[thermo.id].length - 2} altre</div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </div>
       </main>
 

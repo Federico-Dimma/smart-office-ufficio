@@ -1,6 +1,7 @@
 import json
 import boto3
 import uuid
+import re
 import urllib.request
 import urllib.error
 from decimal import Decimal
@@ -78,6 +79,8 @@ def lambda_handler(event, context):
         elif path == '/thermostat' and http_method == 'POST':
             body = json.loads(event.get('body', '{}'))
             return set_thermostat(body.get('id'), body.get('speed'))
+        elif path == '/status' and http_method == 'GET':
+            return get_thermostat_status()
         else:
             return json_response(404, {'error': 'Not found'})
     except Exception as e:
@@ -204,3 +207,53 @@ def set_thermostat(thermo_id, speed):
         if 'header' in str(e).lower():
             return json_response(200, {'success': True, 'note': 'Command sent'})
         return json_response(500, {'error': str(e)})
+
+def get_thermostat_status():
+    """Legge lo stato attuale di tutti i termostati dalla pagina mappa.cgi"""
+    try:
+        url = f'{OFFICE_API_BASE}/cgi-bin/mappa.cgi?id=2'
+        print(f"Fetching status from: {url}")
+        
+        req = urllib.request.Request(url, method='GET')
+        req.add_header('User-Agent', 'SmartOffice-Lambda/1.0')
+        
+        with urllib.request.urlopen(req, timeout=10) as response:
+            html = response.read().decode('latin-1')
+        
+        # Mappa inversa: indirizzo -> id termostato
+        address_to_id = {v: k for k, v in THERMO_ADDRESSES.items()}
+        thermo_names = ['Martina', 'Federico', 'Michele', 'Franco', 'Corridoio', 'Commerciale', 'Ingresso', 'Federica']
+        
+        status = {}
+        
+        # Cerca pattern: checked="checked" per ogni velocità di ogni termostato
+        # Pattern: speed_ttyS1_{indirizzo}_1_{velocità}" value="{velocità}" checked="checked"
+        for address, thermo_id in address_to_id.items():
+            # Cerca quale radio button è checked per questo indirizzo
+            pattern = rf'speed_ttyS1_{address}_1_(\d)"\s+value="\d"\s*checked="checked"'
+            match = re.search(pattern, html)
+            
+            if match:
+                speed = int(match.group(1))
+            else:
+                # Prova pattern alternativo (checked prima di value)
+                pattern2 = rf'speed_ttyS1_{address}_1_(\d)"[^>]*checked="checked"'
+                match2 = re.search(pattern2, html)
+                if match2:
+                    speed = int(match2.group(1))
+                else:
+                    speed = -1  # Sconosciuto
+            
+            status[thermo_id] = {
+                'name': thermo_names[thermo_id] if thermo_id < len(thermo_names) else f'Thermo {thermo_id}',
+                'speed': speed,
+                'address': address
+            }
+        
+        print(f"Status result: {status}")
+        return json_response(200, {'status': status})
+        
+    except Exception as e:
+        print(f"Error fetching status: {str(e)}")
+        return json_response(502, {'error': f'Failed to fetch status: {str(e)}'})
+

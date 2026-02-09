@@ -106,13 +106,31 @@ body {
   box-shadow: var(--shadow-lg);
 }
 
+.thermostat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 2px solid var(--border);
+}
+
 .thermostat-name {
   font-size: 1.25rem;
   font-weight: 600;
   color: var(--primary);
-  margin-bottom: 1rem;
-  padding-bottom: 0.75rem;
-  border-bottom: 2px solid var(--border);
+  margin: 0;
+}
+
+.status-badge {
+  padding: 0.35rem 0.75rem;
+  border-radius: 20px;
+  color: white;
+  font-weight: 700;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
 }
 
 /* Speed Buttons */
@@ -143,6 +161,12 @@ body {
 .speed-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.speed-btn.active {
+  transform: scale(1.08);
+  box-shadow: 0 0 0 3px rgba(255,255,255,0.5), 0 4px 12px rgba(0,0,0,0.3);
+  filter: brightness(1.15);
 }
 
 /* Buttons */
